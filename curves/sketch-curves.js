@@ -1,14 +1,18 @@
 /** @format */
 
 const canvasSketch = require("canvas-sketch");
+const random = require("canvas-sketch-util/random");
+const math = require("canvas-sketch-util/math");
+const colormap = require("colormap");
 
 const settings = {
     dimensions: [1080, 1080],
+    animate: true,
 };
 
 const sketch = ({ width, height }) => {
-    const cols = 6;
-    const rows = 12;
+    const cols = 30;
+    const rows = 8;
     const numCells = cols * rows;
 
     // grids
@@ -27,34 +31,81 @@ const sketch = ({ width, height }) => {
 
     // points
     const points = [];
-    let x, y;
+    let x, y, n, lineWidth, color;
+    let frequency = 0.002;
+    let amplitude = 910;
+
+    const colors = colormap({
+        colormap: "copper",
+        nshades: amplitude,
+    });
     for (let i = 0; i < numCells; i++) {
         x = (i % cols) * cw;
         y = Math.floor(i / cols) * ch;
+        n = random.noise2D(x, y, frequency, amplitude);
+        // x += n;
+        // y += n;
+
+        lineWidth = math.mapRange(n, -amplitude, amplitude, 2, 10);
+        color = colors[Math.floor(math.mapRange(n, -amplitude, amplitude, 0, amplitude))];
         // console.log(x, y);
-        points.push(new Point({ x, y }));
+        points.push(new Point({ x, y, lineWidth, color }));
     }
 
-    return ({ context, width, height }) => {
+    return ({ context, width, height, frame }) => {
         context.fillStyle = "black";
         context.fillRect(0, 0, width, height);
 
         context.save();
         context.translate(mx, my);
         context.translate(cw * 0.5, ch * 0.5);
+        context.strokeStyle = "red";
+        context.lineWidth = 4;
+
+        let lastx, lasty;
+
+        points.forEach((point) => {
+            n = random.noise2D(point.ix + frame * 1, point.iy, frequency, amplitude);
+            point.x = point.ix + n;
+            point.y = point.iy + n;
+        });
 
         // draw lines
-        for (let r = 0; r < numCells; r++) { 
-            for (let c = 0; c < numCells; c++) {
-                const p = points[r];
-                const p2 = points[c];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols - 1; c++) {
+                // const point = points[r * cols + c];
+                const curr = points[r * cols + c + 0];
+                const next = points[r * cols + c + 1];
+
+                // console.log(curr.x, curr.y, next.x, next.y);
+                const mx = curr.x + (next.x - curr.x) * 0.5;
+                const my = curr.y + (next.y - curr.y) * 0.5;
+
+                if (!c) {
+                    lastx = curr.x;
+                    lasty = curr.y;
+                }
+
                 context.beginPath();
+
+                context.lineWidth = curr.lineWidth;
+                context.strokeStyle = curr.color;
+                // if (c == 0) context.moveTo(curr.x, curr.y);
+                // else if (c == cols - 2) context.quadraticCurveTo(curr.x, curr.y, next.x, next.y);
+                // else context.quadraticCurveTo(curr.x, curr.y, mx, my);
+                context.moveTo(lastx, lasty);
+                context.quadraticCurveTo(curr.x, curr.y, mx, my);
+                context.stroke();
+
+                lastx = mx + (c / cols) * 500;
+                lasty = my - (c / cols) * 500;
+            }
         }
 
         // draw grid points
-        points.forEach((point) => {
-            point.draw(context);
-        });
+        // points.forEach((point) => {
+        //     point.draw(context);
+        // });
         context.restore();
     };
 };
@@ -62,9 +113,14 @@ const sketch = ({ width, height }) => {
 canvasSketch(sketch, settings);
 
 class Point {
-    constructor({ x, y }) {
+    constructor({ x, y, lineWidth, color }) {
         this.x = x;
         this.y = y;
+        this.lineWidth = lineWidth;
+        this.color = color;
+
+        this.ix = x;
+        this.iy = y;
     }
     draw(context) {
         context.save();
